@@ -1,0 +1,22 @@
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Expo
+.expo/
+web-build/
+dist/
+
+# Native builds
+*.orig.*
+android/
+ios/
+
+# Environment and IDE
+.env*
+.DS_Store
+.idea/
+.vscode/
+Thumbs.db

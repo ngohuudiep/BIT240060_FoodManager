@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "BIT240060_FoodManager",
+    "slug": "bit240060-foodmanager",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.bit240060.foodmanager"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

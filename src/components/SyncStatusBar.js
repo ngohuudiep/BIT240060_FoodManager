@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { ChangeHistoryModal } from './ChangeHistoryModal';
 
 export const SyncStatusBar = () => {
-  const { isOnline, isSyncing, pendingSyncCount, triggerAutoSync, t } = useApp();
+  const { isOnline, toggleOnlineMode, isSyncing, pendingSyncCount, triggerAutoSync, t } = useApp();
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   return (
@@ -43,23 +43,37 @@ export const SyncStatusBar = () => {
 
           {/* Nút gợi ý xem lịch sử thay đổi */}
           <View style={styles.historyPill}>
-            <Text style={styles.historyPillText}>📋 Xem lịch sử</Text>
+            <Text style={styles.historyPillText}>📋 Lịch sử</Text>
           </View>
         </TouchableOpacity>
 
-        {/* Nút đồng bộ thủ công */}
-        <TouchableOpacity
-          style={styles.syncBtn}
-          onPress={triggerAutoSync}
-          disabled={isSyncing}
-          activeOpacity={0.7}
-        >
-          {isSyncing ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Text style={styles.syncBtnText}>↻</Text>
-          )}
-        </TouchableOpacity>
+        <View style={styles.actionButtons}>
+          {/* Nút chuyển đổi Mô phỏng Mạng (Offline / Online) - Dành cho kiểm tra & Chấm thi */}
+          <TouchableOpacity
+            style={[styles.modeToggleBtn, !isOnline && styles.modeToggleOffline]}
+            onPress={toggleOnlineMode}
+            activeOpacity={0.7}
+            title="Chuyển đổi trạng thái mạng Offline/Online để kiểm tra tính năng tự động đồng bộ"
+          >
+            <Text style={styles.modeToggleBtnText}>
+              {isOnline ? '🌐 Online' : '📴 Offline'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Nút đồng bộ thủ công */}
+          <TouchableOpacity
+            style={styles.syncBtn}
+            onPress={() => triggerAutoSync(true)}
+            disabled={isSyncing}
+            activeOpacity={0.7}
+          >
+            {isSyncing ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.syncBtnText}>↻</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* MODAL LỊCH SỬ THAY ĐỔI */}
@@ -128,12 +142,33 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
   },
+  actionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modeToggleBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(16, 185, 129, 0.3)',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+    marginLeft: 6,
+  },
+  modeToggleOffline: {
+    backgroundColor: 'rgba(239, 68, 68, 0.4)',
+  },
+  modeToggleBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
   syncBtn: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 6,
-    marginLeft: 8,
+    marginLeft: 6,
   },
   syncBtnText: {
     color: '#FFFFFF',

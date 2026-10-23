@@ -17,6 +17,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 export const SettingsScreen = () => {
   const {
     isOnline,
+    toggleOnlineMode,
     isSyncing,
     pendingSyncCount,
     triggerAutoSync,
@@ -101,9 +102,15 @@ export const SettingsScreen = () => {
 
         <View style={styles.syncStatusRow}>
           <Text style={styles.infoLabel}>Trạng thái mạng:</Text>
-          <Text style={[styles.infoValue, isOnline ? styles.onlineText : styles.offlineText]}>
-            ● {isOnline ? t('online') : t('offline')}
-          </Text>
+          <TouchableOpacity
+            style={[styles.simToggleBtn, !isOnline && styles.simToggleOffline]}
+            onPress={toggleOnlineMode}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.simToggleBtnText}>
+              {isOnline ? '🌐 Trực tuyến (Online)' : '📴 Ngoại tuyến (Offline)'} [Chuyển]
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.syncStatusRow}>
@@ -240,6 +247,23 @@ const styles = StyleSheet.create({
   },
   offlineText: {
     color: '#F87171',
+  },
+  simToggleBtn: {
+    backgroundColor: 'rgba(16, 185, 129, 0.25)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#10B981',
+  },
+  simToggleOffline: {
+    backgroundColor: 'rgba(239, 68, 68, 0.25)',
+    borderColor: '#EF4444',
+  },
+  simToggleBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   infoValueBold: {
     color: '#38BDF8',

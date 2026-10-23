@@ -1,101 +1,125 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useApp } from '../context/AppContext';
+import { MSSV } from '../constants/config';
+import { isSameCategoryId } from '../utils/validation';
 
 export const DishCard = ({ dish, onPress, onEdit, onDelete }) => {
   const { categories, t } = useApp();
   const [imageError, setImageError] = useState(false);
+  const fallbackImage = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
+
+  // Lấy các trường an toàn tương thích cả Plain Object lẫn DishModel Instance
+  const dishId = dish.id || dish[`${MSSV}_Id`] || dish[`${MSSV}_id`] || dish.BIT240060_Id || dish.BIT240060_id || dish._id;
+  const dishName = dish.name || dish[`${MSSV}_Name`] || dish[`${MSSV}_name`] || dish.BIT240060_Name || dish.BIT240060_name || 'Món ăn';
+  const dishPrice = dish.price ?? dish[`${MSSV}_Price`] ?? dish[`${MSSV}_price`] ?? dish.BIT240060_Price ?? 0;
+  const dishPrepTime = dish.preparationTime ?? dish[`${MSSV}_PreparationTime`] ?? dish[`${MSSV}_preparationTime`] ?? dish.BIT240060_PreparationTime ?? 0;
+  const dishIsAvailable = dish.isAvailable ?? dish[`${MSSV}_IsAvailable`] ?? dish[`${MSSV}_isAvailable`] ?? dish.BIT240060_IsAvailable ?? true;
+  const dishCategoryId = dish.categoryId || dish.dishCategoryId || dish[`${MSSV}_DishCategoryId`] || dish[`${MSSV}_dishCategoryId`] || dish.BIT240060_DishCategoryId;
+  const dishIsQuick = dish.isQuick ?? (dishPrepTime <= 15);
+
+  const rawImages = dish.images || dish.dishImage || dish[`${MSSV}_DishImage`] || dish[`${MSSV}_dishImage`] || dish.BIT240060_DishImage || [];
+  const foundThumb = Array.isArray(rawImages) ? rawImages.find((img) => img && (img[`${MSSV}_IsThumbnail`] || img.isThumbnail || img.BIT240060_IsThumbnail)) : null;
+  const firstImg = Array.isArray(rawImages) && rawImages[0] ? rawImages[0] : null;
+  const dishThumbUrl =
+    (foundThumb && (foundThumb[`${MSSV}_ImageUrl`] || foundThumb.imageUrl || foundThumb.url || foundThumb.BIT240060_ImageUrl)) ||
+    dish.thumbnailUrl ||
+    (firstImg && (firstImg[`${MSSV}_ImageUrl`] || firstImg.imageUrl || firstImg.url || firstImg.BIT240060_ImageUrl)) ||
+    fallbackImage;
+
+  useEffect(() => {
+    setImageError(false);
+  }, [dishThumbUrl]);
 
   // Tìm tên danh mục tương ứng
   const category = categories.find(
-    (c) => String(c.id) === String(dish.categoryId)
+    (c) => isSameCategoryId(c.id || c[`${MSSV}_Id`] || c[`${MSSV}_id`] || c.BIT240060_Id, dishCategoryId)
   );
-
-  const fallbackImage = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
+  const categoryDisplayName = category
+    ? (category.name || category[`${MSSV}_Name`] || category.BIT240060_Name || 'Loại món')
+    : (dishCategoryId ? `Loại ${dishCategoryId}` : 'Món chính');
 
   return (
-    <TouchableOpacity
-      style={[styles.card, !dish.isAvailable && styles.cardUnavailable]}
-      onPress={onPress}
-      activeOpacity={0.85}
-    >
-      <View style={styles.imageContainer}>
-        <Image
-          source={{ uri: imageError ? fallbackImage : dish.thumbnailUrl }}
-          style={styles.thumbnail}
-          onError={() => setImageError(true)}
-          resizeMode="cover"
-        />
-        {/* Nhãn thời gian chế biến: Quick <= 15m hoặc Regular > 15m */}
-        <View
-          style={[
-            styles.timeBadge,
-            dish.isQuick ? styles.quickBadge : styles.regularBadge,
-          ]}
-        >
-          <Text style={styles.timeBadgeText}>
-            ⏱ {dish.isQuick ? t('quick') : t('regular')} ({dish.preparationTime}{t('minutes')})
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.content}>
-        <View style={styles.titleRow}>
-          <Text style={styles.dishName} numberOfLines={1}>
-            {dish.name}
-          </Text>
+    <View style={[styles.card, !dishIsAvailable && styles.cardUnavailable]}>
+      {/* 1. Vùng bấm xem chi tiết món ăn (Ảnh, Tên món, Danh mục, Trạng thái) */}
+      <TouchableOpacity
+        style={styles.clickableArea}
+        onPress={onPress}
+        activeOpacity={0.85}
+      >
+        <View style={styles.imageContainer}>
+          <Image
+            source={{ uri: imageError ? fallbackImage : dishThumbUrl }}
+            style={styles.thumbnail}
+            onError={() => setImageError(true)}
+            resizeMode="cover"
+          />
+          {/* Nhãn thời gian chế biến: Quick <= 15m hoặc Regular > 15m */}
           <View
             style={[
-              styles.statusBadge,
-              dish.isAvailable ? styles.availableBadge : styles.unavailableBadge,
+              styles.timeBadge,
+              dishIsQuick ? styles.quickBadge : styles.regularBadge,
             ]}
           >
-            <Text
-              style={[
-                styles.statusText,
-                dish.isAvailable ? styles.availableText : styles.unavailableText,
-              ]}
-            >
-              {dish.isAvailable ? t('available') : t('unavailable')}
+            <Text style={styles.timeBadgeText}>
+              ⏱ {dishIsQuick ? t('quick') : t('regular')} ({dishPrepTime}{t('minutes')})
             </Text>
           </View>
         </View>
 
-        {category && (
-          <Text style={styles.categoryName} numberOfLines={1}>
-            📂 {category.name}
-          </Text>
-        )}
-
-        <View style={styles.footerRow}>
-          <Text style={styles.price}>
-            {Number(dish.price).toLocaleString()} đ
-          </Text>
-
-          <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={styles.editBtn}
-              onPress={(e) => {
-                e.stopPropagation();
-                onEdit(dish);
-              }}
+        <View style={styles.content}>
+          <View style={styles.titleRow}>
+            <Text style={styles.dishName} numberOfLines={1}>
+              {dishName}
+            </Text>
+            <View
+              style={[
+                styles.statusBadge,
+                dishIsAvailable ? styles.availableBadge : styles.unavailableBadge,
+              ]}
             >
-              <Text style={styles.actionBtnText}>{t('edit')}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.deleteBtn}
-              onPress={(e) => {
-                e.stopPropagation();
-                onDelete(dish);
-              }}
-            >
-              <Text style={styles.deleteBtnText}>{t('delete')}</Text>
-            </TouchableOpacity>
+              <Text
+                style={[
+                  styles.statusText,
+                  dishIsAvailable ? styles.availableText : styles.unavailableText,
+                ]}
+              >
+                {dishIsAvailable ? t('available') : t('unavailable')}
+              </Text>
+            </View>
           </View>
+
+          <Text style={styles.categoryName} numberOfLines={1}>
+            📂 {categoryDisplayName}
+          </Text>
+        </View>
+      </TouchableOpacity>
+
+      {/* 2. Thanh hiển thị Giá và Nút chức năng (Tách rời, không lồng trong TouchableOpacity) */}
+      <View style={styles.footerRow}>
+        <Text style={styles.price}>
+          {Number(dishPrice).toLocaleString()} đ
+        </Text>
+
+        <View style={styles.actionButtons}>
+          <TouchableOpacity
+            style={styles.editBtn}
+            onPress={() => onEdit && onEdit(dish)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.actionBtnText}>{t('edit')}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.deleteBtn}
+            onPress={() => onDelete && onDelete(dish)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.deleteBtnText}>{t('delete')}</Text>
+          </TouchableOpacity>
         </View>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 };
 
@@ -198,8 +222,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 4,
-    paddingTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: '#334155',
   },

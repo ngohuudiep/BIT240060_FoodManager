@@ -9,6 +9,19 @@
  * 6. Khoảng giá lọc hợp lệ (Min <= Max)
  */
 
+/**
+ * So sánh linh hoạt ID loại món ăn giữa các định dạng (ví dụ 'cat_1' và '1')
+ */
+export const isSameCategoryId = (catIdA, catIdB) => {
+  if (!catIdA || !catIdB) return false;
+  const sA = String(catIdA).trim();
+  const sB = String(catIdB).trim();
+  if (sA === sB) return true;
+  const numA = sA.replace(/^cat_/, '');
+  const numB = sB.replace(/^cat_/, '');
+  return Boolean(numA && numB && numA === numB);
+};
+
 export const validateDish = (dishData, existingDishes = [], currentDishId = null) => {
   const errors = {};
 
@@ -40,16 +53,20 @@ export const validateDish = (dishData, existingDishes = [], currentDishId = null
   if (name && categoryId) {
     const isDuplicate = existingDishes.some((item) => {
       // Bỏ qua chính món đang chỉnh sửa (nếu là update)
-      const itemId = item.BIT240060_Id || item.id;
-      if (currentDishId && String(itemId) === String(currentDishId)) {
-        return false;
+      const itemId = item.BIT240060_Id || item.BIT240060_id || item.id || item._id || '';
+      if (currentDishId) {
+        const sA = String(itemId).replace(/^dish_/, '');
+        const sB = String(currentDishId).replace(/^dish_/, '');
+        if (sA && sB && sA === sB) {
+          return false;
+        }
       }
 
-      const itemCatId = item.BIT240060_DishCategoryId || item.categoryId;
-      const itemName = item.BIT240060_Name || item.name || '';
+      const itemCatId = item.BIT240060_DishCategoryId || item.BIT240060_dishCategoryId || item.dishCategoryId || item.categoryId || '';
+      const itemName = item.BIT240060_Name || item.BIT240060_name || item.name || '';
 
       return (
-        String(itemCatId) === String(categoryId) &&
+        isSameCategoryId(itemCatId, categoryId) &&
         itemName.trim().toLowerCase() === name.toLowerCase()
       );
     });
@@ -100,6 +117,6 @@ export const isCategoryInUse = (categoryId, dishes = []) => {
       dish.dishCategoryId ||
       (dish.toJSON ? dish.toJSON()?.BIT240060_DishCategoryId : null);
 
-    return String(dishCatId || '').trim() === targetCatId;
+    return isSameCategoryId(dishCatId, targetCatId);
   });
 };

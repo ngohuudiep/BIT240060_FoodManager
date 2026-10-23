@@ -15,6 +15,11 @@ import { dishService } from '../services/dishService';
 import { categoryService } from '../services/categoryService';
 import { syncService } from '../services/syncService';
 import { translate } from '../locales';
+import { DishModel } from '../models/Dish';
+import { DishCategoryModel } from '../models/Category';
+import { INITIAL_DISHES, INITIAL_CATEGORIES } from '../utils/mockData';
+import { MSSV } from '../constants/config';
+import { isSameCategoryId } from '../utils/validation';
 
 const AppContext = createContext();
 
@@ -36,10 +41,14 @@ export const AppProvider = ({ children }) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
 
-  // 3. Dữ liệu chính
-  const [dishes, setDishes] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // 3. Dữ liệu chính (Khởi tạo sẵn 8 món ăn và 3 categories mẫu ban đầu)
+  const [dishes, setDishes] = useState(() =>
+    INITIAL_DISHES.map((d) => DishModel.fromJSON(d))
+  );
+  const [categories, setCategories] = useState(() =>
+    INITIAL_CATEGORIES.map((c) => DishCategoryModel.fromJSON(c))
+  );
+  const [loading, setLoading] = useState(false);
 
   // 4. Trạng thái Bộ lọc & Tìm kiếm (Lưu giữ khi chuyển màn hình)
   const [filters, setFilters] = useState(DEFAULT_FILTER);
@@ -103,20 +112,38 @@ export const AppProvider = ({ children }) => {
       // Khi vừa có mạng trở lại
       if (!prevOnline && online) {
         console.log('[Network] Internet restored -> TỰ ĐỘNG ĐỒNG BỘ LOCAL <-> MOCKAPI');
-        triggerAutoSync();
+        setTimeout(() => {
+          triggerAutoSync(true);
+        }, 150);
       }
       return online;
     });
   };
 
   /**
+   * Chuyển đổi thủ công Trực tuyến / Ngoại tuyến (Hỗ trợ chấm thi & Demo mượt mà)
+   */
+  const toggleOnlineMode = () => {
+    setIsOnline((prev) => {
+      const next = !prev;
+      console.log(`[Network Mode] Chuyển đổi trạng thái mạng: ${next ? 'ONLINE' : 'OFFLINE'}`);
+      if (next) {
+        setTimeout(() => {
+          triggerAutoSync(true);
+        }, 150);
+      }
+      return next;
+    });
+  };
+
+  /**
    * Hàm tự động đồng bộ ngầm lên MockAPI
    */
-  const triggerAutoSync = async () => {
+  const triggerAutoSync = async (forceOnline = false) => {
     setIsSyncing(true);
     try {
       await syncService.processSyncQueue();
-      await refreshData();
+      await refreshData(forceOnline ? true : null);
       const pending = await syncService.getPendingCount();
       setPendingSyncCount(pending);
     } catch (e) {
@@ -130,34 +157,63 @@ export const AppProvider = ({ children }) => {
    * Tải toàn bộ dữ liệu lần đầu
    */
   const loadInitialData = async () => {
-    setLoading(true);
     try {
-      const [dishList, catList, pending] = await Promise.all([
-        dishService.getAllDishes(isOnline),
+      // Dọn sạch cache trùng lặp trước khi load
+      await storageService.cleanupLocalDishes();
+
+      // Nếu đang có mạng và có tác vụ chưa sync trong queue, chạy sync ngay lập tức
+      const pendingQueue = await syncService.getPendingCount();
+      const currentOnline = Platform.OS === 'web' ? Boolean(navigator.onLine) : true;
+      if (pendingQueue > 0 && currentOnline) {
+        console.log('[AppContext] Khởi động phát hiện hàng đợi chưa sync -> Đồng bộ tự động ngay');
+        await syncService.processSyncQueue();
+      }
+
+      let [dishList, catList, pending] = await Promise.all([
+        dishService.getAllDishes(currentOnline),
         categoryService.getAllCategories(),
         syncService.getPendingCount(),
       ]);
 
-      setDishes(dishList);
-      setCategories(catList);
+      if (dishList && dishList.length > 0) {
+        setDishes(dishList);
+      } else {
+        const restored = await dishService.restoreDefaultDishes(currentOnline);
+        setDishes(restored);
+      }
+
+      if (catList && catList.length > 0) {
+        setCategories(catList);
+      } else {
+        setCategories(INITIAL_CATEGORIES.map((c) => DishCategoryModel.fromJSON(c)));
+      }
+
       setPendingSyncCount(pending);
     } catch (e) {
       console.error('[AppContext] Error loading initial data:', e);
-    } finally {
-      setLoading(false);
     }
   };
 
   /**
    * Làm mới dữ liệu từ local và server
    */
-  const refreshData = async () => {
+  const refreshData = async (onlineOverride = null) => {
     try {
-      const [dishList, catList, pending] = await Promise.all([
-        dishService.getAllDishes(isOnline),
+      // Dọn sạch cache trùng lặp trước khi refresh
+      await storageService.cleanupLocalDishes();
+
+      const effectiveOnline = onlineOverride !== null ? onlineOverride : isOnline;
+
+      let [dishList, catList, pending] = await Promise.all([
+        dishService.getAllDishes(effectiveOnline),
         categoryService.getAllCategories(),
         syncService.getPendingCount(),
       ]);
+
+      if (!dishList || dishList.length === 0) {
+        dishList = await dishService.restoreDefaultDishes(effectiveOnline);
+      }
+
       setDishes(dishList);
       setCategories(catList);
       setPendingSyncCount(pending);
@@ -190,20 +246,62 @@ export const AppProvider = ({ children }) => {
   // --- CRUD MÓN ĂN ---
   const addDish = async (dishData) => {
     const created = await dishService.createDish(dishData, isOnline);
-    await refreshData();
+    const createdName = String(created.name || '').trim().toLowerCase();
+    const createdCat = String(created.categoryId || '');
+
+    setDishes((prev) => {
+      // Lọc bỏ mọi món trùng ID hoặc trùng Tên + Loại món (chống hiện 2 thẻ món)
+      const filtered = prev.filter((d) => {
+        if (dishService.isSameId(d.id, created.id)) return false;
+        const dName = String(d.name || '').trim().toLowerCase();
+        const dCat = String(d.categoryId || '');
+        if (createdName && dName === createdName && createdCat && dCat === createdCat) {
+          return false;
+        }
+        return true;
+      });
+      return [created, ...filtered];
+    });
+
+    const pending = await syncService.getPendingCount();
+    setPendingSyncCount(pending);
+    // Đảm bảo món mới thêm luôn hiển thị ngay lập tức trên giao diện
+    updateFilters({ selectedCategory: 'ALL', searchQuery: '' });
     return created;
   };
 
   const updateDish = async (dishId, dishData) => {
     const updated = await dishService.updateDish(dishId, dishData, isOnline);
-    await refreshData();
+    setDishes((prev) =>
+      prev.map((d) => {
+        const dId = d.id || d[`${MSSV}_Id`] || d[`${MSSV}_id`] || d.BIT240060_Id || d.BIT240060_id || d._id;
+        return dishService.isSameId(dId, dishId) ? updated : d;
+      })
+    );
+    const pending = await syncService.getPendingCount();
+    setPendingSyncCount(pending);
+    // Đảm bảo món vừa sửa luôn hiển thị ngay lập tức trên giao diện
+    updateFilters({ selectedCategory: 'ALL', searchQuery: '' });
     return updated;
   };
 
   const deleteDish = async (dishId) => {
-    const result = await dishService.deleteDish(dishId, isOnline);
-    await refreshData();
-    return result;
+    // 1. Cập nhật state dishes ngay lập tức để card biến mất khỏi giao diện không độ trễ
+    setDishes((prev) =>
+      prev.filter((d) => {
+        const idA = d.id || d.BIT240060_Id;
+        return !dishService.isSameId(idA, dishId);
+      })
+    );
+    try {
+      const result = await dishService.deleteDish(dishId, isOnline);
+      const pending = await syncService.getPendingCount();
+      setPendingSyncCount(pending);
+      return result;
+    } catch (e) {
+      console.error('[AppContext] Error deleting dish:', e);
+      return false;
+    }
   };
 
   // --- CRUD LOẠI MÓN ĂN ---
@@ -220,10 +318,25 @@ export const AppProvider = ({ children }) => {
   };
 
   // --- KHÔI PHỤC DỮ LIỆU BAN ĐẦU ---
+  const restoreDefaultDishes = async () => {
+    try {
+      const restored = await dishService.restoreDefaultDishes(isOnline);
+      setDishes(restored);
+      resetFilters();
+      const catList = await categoryService.getAllCategories();
+      setCategories(catList);
+      const pending = await syncService.getPendingCount();
+      setPendingSyncCount(pending);
+      return restored;
+    } catch (e) {
+      console.error('[AppContext] Error restoring default dishes:', e);
+    }
+  };
+
   const resetToDefaults = async () => {
     await storageService.resetAllToDefault();
     resetFilters();
-    await loadInitialData();
+    await restoreDefaultDishes();
   };
 
   // =========================================================================
@@ -235,48 +348,73 @@ export const AppProvider = ({ children }) => {
     // 1. Tìm theo một phần tên món (Case-insensitive)
     if (filters.searchQuery.trim()) {
       const query = filters.searchQuery.trim().toLowerCase();
-      result = result.filter((dish) =>
-        dish.name.toLowerCase().includes(query)
-      );
+      result = result.filter((dish) => {
+        const dName = String(dish.name || dish[`${MSSV}_Name`] || '');
+        return dName.toLowerCase().includes(query);
+      });
     }
 
     // 2. Lọc theo loại món ăn (Category)
     if (filters.selectedCategory && filters.selectedCategory !== 'ALL') {
-      result = result.filter(
-        (dish) => String(dish.categoryId) === String(filters.selectedCategory)
-      );
+      result = result.filter((dish) => {
+        const dCat = dish.categoryId || dish[`${MSSV}_DishCategoryId`];
+        return isSameCategoryId(dCat, filters.selectedCategory);
+      });
     }
 
     // 3. Lọc theo trạng thái đang bán (IsAvailable)
     // "Món ngừng bán vẫn xuất hiện trong danh sách quản lý, nhưng không xuất hiện khi lọc trạng thái đang bán"
     if (filters.availabilityStatus === 'AVAILABLE') {
-      result = result.filter((dish) => dish.isAvailable === true);
+      result = result.filter((dish) => {
+        const avail = dish.isAvailable ?? dish[`${MSSV}_IsAvailable`];
+        return avail === true;
+      });
     } else if (filters.availabilityStatus === 'UNAVAILABLE') {
-      result = result.filter((dish) => dish.isAvailable === false);
+      result = result.filter((dish) => {
+        const avail = dish.isAvailable ?? dish[`${MSSV}_IsAvailable`];
+        return avail === false;
+      });
     }
 
     // 4. Lọc theo khoảng giá (Min Price - Max Price)
     if (filters.minPrice !== '') {
       const min = Number(filters.minPrice);
       if (!isNaN(min)) {
-        result = result.filter((dish) => dish.price >= min);
+        result = result.filter((dish) => {
+          const p = dish.price ?? dish[`${MSSV}_Price`] ?? 0;
+          return p >= min;
+        });
       }
     }
     if (filters.maxPrice !== '') {
       const max = Number(filters.maxPrice);
       if (!isNaN(max)) {
-        result = result.filter((dish) => dish.price <= max);
+        result = result.filter((dish) => {
+          const p = dish.price ?? dish[`${MSSV}_Price`] ?? 0;
+          return p <= max;
+        });
       }
     }
 
     // 5. Sắp xếp (Sort)
-    // Sắp xếp theo giá tăng/giảm hoặc thời gian chế biến tăng
     if (filters.sortBy === 'PRICE_ASC') {
-      result.sort((a, b) => a.price - b.price);
+      result.sort((a, b) => {
+        const pA = a.price ?? a[`${MSSV}_Price`] ?? 0;
+        const pB = b.price ?? b[`${MSSV}_Price`] ?? 0;
+        return pA - pB;
+      });
     } else if (filters.sortBy === 'PRICE_DESC') {
-      result.sort((a, b) => b.price - a.price);
+      result.sort((a, b) => {
+        const pA = a.price ?? a[`${MSSV}_Price`] ?? 0;
+        const pB = b.price ?? b[`${MSSV}_Price`] ?? 0;
+        return pB - pA;
+      });
     } else if (filters.sortBy === 'PREP_TIME_ASC') {
-      result.sort((a, b) => a.preparationTime - b.preparationTime);
+      result.sort((a, b) => {
+        const tA = a.preparationTime ?? a[`${MSSV}_PreparationTime`] ?? 0;
+        const tB = b.preparationTime ?? b[`${MSSV}_PreparationTime`] ?? 0;
+        return tA - tB;
+      });
     }
 
     return result;
@@ -289,6 +427,7 @@ export const AppProvider = ({ children }) => {
         toggleLanguage,
         t,
         isOnline,
+        toggleOnlineMode,
         isSyncing,
         pendingSyncCount,
         triggerAutoSync,
@@ -306,6 +445,7 @@ export const AppProvider = ({ children }) => {
         addCategory,
         deleteCategory,
         resetToDefaults,
+        restoreDefaultDishes,
       }}
     >
       {children}

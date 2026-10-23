@@ -33,9 +33,15 @@ export const categoryService = {
     const local = await storageService.getLocalCategories();
     const catName = raw[`${MSSV}_Name`] || raw.name || 'Loại món mới';
 
+    const catId = raw[`${MSSV}_Id`] || raw.id || `cat_${Date.now()}`;
     const newCat = {
       ...raw,
-      [`${MSSV}_Id`]: raw[`${MSSV}_Id`] || `cat_${Date.now()}`,
+      [`${MSSV}_Id`]: catId,
+      [`${MSSV}_id`]: catId,
+      id: catId,
+      [`${MSSV}_Name`]: catName,
+      [`${MSSV}_name`]: catName,
+      name: catName,
     };
 
     local.push(newCat);

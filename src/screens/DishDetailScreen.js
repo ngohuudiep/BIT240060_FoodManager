@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import { useApp } from '../context/AppContext';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ChangeHistoryModal } from '../components/ChangeHistoryModal';
 import { MSSV } from '../constants/config';
+import { dishService } from '../services/dishService';
+import { isSameCategoryId } from '../utils/validation';
 
 export const DishDetailScreen = ({ dishId, onNavigate }) => {
   const { dishes, categories, deleteDish, t } = useApp();
@@ -18,11 +20,24 @@ export const DishDetailScreen = ({ dishId, onNavigate }) => {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [mainImageError, setMainImageError] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    setMainImageError(false);
+  }, [selectedImageIndex, dishId]);
 
   const fallbackImage = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600';
 
-  // Tìm món ăn theo dishId
-  const dish = dishes.find((d) => String(d.id) === String(dishId));
+  // Tìm món ăn theo dishId linh hoạt
+  const dish = dishes.find((d) => {
+    const idA = d.id || d[`${MSSV}_Id`] || d[`${MSSV}_id`] || d.BIT240060_Id || d.BIT240060_id;
+    return dishService.isSameId(idA, dishId);
+  });
+
+  // Khi đang trong quá trình xóa, không hiển thị màn hình lỗi tránh nhấp nháy UI
+  if (isDeleting) {
+    return null;
+  }
 
   // Xử lý khi ID không tồn tại
   if (!dish) {
@@ -44,9 +59,14 @@ export const DishDetailScreen = ({ dishId, onNavigate }) => {
     );
   }
 
-  const category = categories.find(
-    (c) => String(c.id) === String(dish.categoryId)
-  );
+  const dishCatId = dish.categoryId || dish.dishCategoryId || dish[`${MSSV}_DishCategoryId`];
+  const category = categories.find((c) => {
+    const cId = c.id || c[`${MSSV}_Id`] || c[`${MSSV}_id`] || c.BIT240060_Id;
+    return isSameCategoryId(cId, dishCatId);
+  });
+  const categoryDisplayName = category
+    ? (category.name || category[`${MSSV}_Name`] || category.BIT240060_Name || 'Loại món')
+    : (dishCatId ? `Loại ${dishCatId}` : 'Món chính');
 
   const images = dish.images && dish.images.length > 0 ? dish.images : [];
   const rawPreviewUrl =
@@ -55,9 +75,13 @@ export const DishDetailScreen = ({ dishId, onNavigate }) => {
   const currentPreviewUrl = (mainImageError || !rawPreviewUrl) ? fallbackImage : rawPreviewUrl;
 
   const handleDelete = async () => {
-    await deleteDish(dish.id);
+    const idToDelete = dish ? (dish.id || dish[`${MSSV}_Id`]) : dishId;
+    setIsDeleting(true);
     setShowDeleteModal(false);
     onNavigate('DISH_LIST');
+    if (idToDelete) {
+      await deleteDish(idToDelete);
+    }
   };
 
   return (
@@ -99,7 +123,8 @@ export const DishDetailScreen = ({ dishId, onNavigate }) => {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.thumbRow}>
               {images.map((img, index) => {
                 const isSelected = index === selectedImageIndex;
-                const isThumb = img[`${MSSV}_IsThumbnail`];
+                const isThumb = Boolean(img[`${MSSV}_IsThumbnail`] || img.isThumbnail || img.BIT240060_IsThumbnail);
+                const imgUri = img[`${MSSV}_ImageUrl`] || img.imageUrl || img.BIT240060_ImageUrl || img.url || '';
                 return (
                   <TouchableOpacity
                     key={index}
@@ -110,7 +135,7 @@ export const DishDetailScreen = ({ dishId, onNavigate }) => {
                     onPress={() => setSelectedImageIndex(index)}
                   >
                     <Image
-                      source={{ uri: img[`${MSSV}_ImageUrl`] }}
+                      source={{ uri: imgUri }}
                       style={styles.thumbImg}
                     />
                     {isThumb && (
@@ -143,7 +168,7 @@ export const DishDetailScreen = ({ dishId, onNavigate }) => {
             <View style={styles.metaPill}>
               <Text style={styles.metaPillLabel}>{t('category')}:</Text>
               <Text style={styles.metaPillValue}>
-                {category ? category.name : 'N/A'}
+                {categoryDisplayName}
               </Text>
             </View>
 

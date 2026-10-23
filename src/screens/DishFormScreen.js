@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,8 +11,9 @@ import {
   Alert,
 } from 'react-native';
 import { useApp } from '../context/AppContext';
-import { validateDish } from '../utils/validation';
+import { validateDish, isSameCategoryId } from '../utils/validation';
 import { MSSV } from '../constants/config';
+import { dishService } from '../services/dishService';
 
 export const DishFormScreen = ({ dishId, onNavigate }) => {
   const { dishes, categories, addDish, updateDish, t } = useApp();
@@ -30,26 +31,45 @@ export const DishFormScreen = ({ dishId, onNavigate }) => {
   const [errors, setErrors] = useState({});
   const [imageError, setImageError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
+  const hasInitializedRef = useRef(false);
 
   // Tìm món cũ nếu là màn hình chỉnh sửa
-  const existingDish = isEditing ? dishes.find((d) => String(d.id) === String(dishId)) : null;
+  const existingDish = isEditing
+    ? dishes.find((d) => {
+        const idA = d.id || d[`${MSSV}_Id`] || d[`${MSSV}_id`] || d.BIT240060_Id || d.BIT240060_id || d._id;
+        return dishService.isSameId(idA, dishId);
+      })
+    : null;
 
-  // Nạp dữ liệu cũ nếu là chỉnh sửa
+  // Nạp dữ liệu ban đầu
   useEffect(() => {
+    if (hasInitializedRef.current) return;
+
     if (isEditing) {
       if (existingDish) {
-        setName(existingDish.name);
-        setPrice(String(existingDish.price));
-        setPrepTime(String(existingDish.preparationTime));
-        setCategoryId(String(existingDish.categoryId));
-        setIsAvailable(existingDish.isAvailable);
-        setDescription(existingDish.description || '');
-        setImages(existingDish.images ? [...existingDish.images] : []);
+        setName(existingDish.name || existingDish[`${MSSV}_Name`] || '');
+        setPrice(String(existingDish.price ?? existingDish[`${MSSV}_Price`] ?? ''));
+        setPrepTime(String(existingDish.preparationTime ?? existingDish[`${MSSV}_PreparationTime`] ?? ''));
+        const oldCat = existingDish.categoryId || existingDish.dishCategoryId || existingDish[`${MSSV}_DishCategoryId`] || '';
+        const matchedCat = categories.find((c) =>
+          isSameCategoryId(c.id || c[`${MSSV}_Id`] || c.BIT240060_Id, oldCat)
+        );
+        const selectedCatId = matchedCat
+          ? String(matchedCat.id || matchedCat[`${MSSV}_Id`] || matchedCat.BIT240060_Id)
+          : String(oldCat);
+        setCategoryId(selectedCatId);
+        setIsAvailable(existingDish.isAvailable ?? existingDish[`${MSSV}_IsAvailable`] ?? true);
+        setDescription(existingDish.description || existingDish[`${MSSV}_Description`] || '');
+        const oldImgs = existingDish.images || existingDish.dishImage || existingDish[`${MSSV}_DishImage`] || [];
+        setImages(Array.isArray(oldImgs) ? [...oldImgs] : []);
+        hasInitializedRef.current = true;
       }
     } else {
-      // Mặc định chọn category đầu tiên nếu có
       if (categories.length > 0) {
-        setCategoryId(String(categories[0].id));
+        const firstCatId = String(categories[0].id || categories[0][`${MSSV}_Id`] || categories[0].BIT240060_Id);
+        setCategoryId(firstCatId);
+        hasInitializedRef.current = true;
       }
     }
   }, [dishId, isEditing, existingDish, categories]);
@@ -95,44 +115,70 @@ export const DishFormScreen = ({ dishId, onNavigate }) => {
     const newImageItem = {
       [`${MSSV}_ImageUrl`]: url,
       [`${MSSV}_IsThumbnail`]: isFirstImage,
+      BIT240060_ImageUrl: url,
+      BIT240060_IsThumbnail: isFirstImage,
+      imageUrl: url,
+      isThumbnail: isFirstImage,
     };
 
     setImages([...images, newImageItem]);
     setNewImageUrl('');
   };
 
-  // Chọn ảnh làm Thumbnail (Đảm bảo tối đa 01 ảnh có IsThumbnail = true)
+  // Chọn ảnh làm Thumbnail (Đảm bảo DUY NHẤT 01 ảnh có IsThumbnail = true)
   const handleSetThumbnail = (indexToSet) => {
-    const updated = images.map((img, idx) => ({
-      ...img,
-      [`${MSSV}_IsThumbnail`]: idx === indexToSet,
-    }));
+    const updated = images.map((img, idx) => {
+      const isSelected = idx === indexToSet;
+      return {
+        ...img,
+        [`${MSSV}_IsThumbnail`]: isSelected,
+        BIT240060_IsThumbnail: isSelected,
+        isThumbnail: isSelected,
+      };
+    });
     setImages(updated);
   };
 
   // Xóa ảnh khỏi mảng
   const handleRemoveImage = (indexToRemove) => {
-    const wasThumb = images[indexToRemove]?.[`${MSSV}_IsThumbnail`];
+    const wasThumb = Boolean(
+      images[indexToRemove]?.[`${MSSV}_IsThumbnail`] ||
+      images[indexToRemove]?.isThumbnail ||
+      images[indexToRemove]?.BIT240060_IsThumbnail
+    );
     const filtered = images.filter((_, idx) => idx !== indexToRemove);
 
     // Nếu ảnh vừa xóa là Thumbnail và vẫn còn ảnh khác, đặt ảnh đầu tiên làm thumbnail
     if (wasThumb && filtered.length > 0) {
       filtered[0][`${MSSV}_IsThumbnail`] = true;
+      filtered[0].isThumbnail = true;
+      filtered[0].BIT240060_IsThumbnail = true;
     }
 
     setImages(filtered);
   };
 
-  // Xử lý gửi Form & Ràng buộc dữ liệu (Validation)
+  // Xử lý gửi Form & Ràng buộc dữ liệu (Validation) - Có khóa chống double-tap
   const handleSubmit = async () => {
+    if (isSubmittingRef.current || submitting) return;
+
     const payload = {
-      [`${MSSV}_Name`]: name,
+      [`${MSSV}_Name`]: name.trim(),
+      name: name.trim(),
       [`${MSSV}_Price`]: Number(price),
+      price: Number(price),
       [`${MSSV}_PreparationTime`]: parseInt(prepTime, 10),
+      preparationTime: parseInt(prepTime, 10),
       [`${MSSV}_IsAvailable`]: isAvailable,
-      [`${MSSV}_Description`]: description,
+      isAvailable: isAvailable,
+      [`${MSSV}_Description`]: description.trim(),
+      description: description.trim(),
       [`${MSSV}_DishCategoryId`]: categoryId,
+      dishCategoryId: categoryId,
+      categoryId: categoryId,
       [`${MSSV}_DishImage`]: images,
+      dishImage: images,
+      images: images,
     };
 
     // Kiểm tra các ràng buộc: Name, Price, PrepTime, Category, Unique name in category
@@ -142,6 +188,7 @@ export const DishFormScreen = ({ dishId, onNavigate }) => {
       return;
     }
 
+    isSubmittingRef.current = true;
     setErrors({});
     setSubmitting(true);
 
@@ -158,6 +205,7 @@ export const DishFormScreen = ({ dishId, onNavigate }) => {
       Alert.alert(t('error'), e.message);
     } finally {
       setSubmitting(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -192,28 +240,33 @@ export const DishFormScreen = ({ dishId, onNavigate }) => {
             {t('categoryLabel')} <Text style={styles.required}>*</Text>
           </Text>
           <View style={styles.categoryChips}>
-            {categories.map((cat) => (
-              <TouchableOpacity
-                key={cat.id}
-                style={[
-                  styles.categoryChip,
-                  categoryId === String(cat.id) && styles.categoryChipSelected,
-                ]}
-                onPress={() => {
-                  setCategoryId(String(cat.id));
-                  if (errors.categoryId) setErrors({ ...errors, categoryId: null });
-                }}
-              >
-                <Text
+            {categories.map((cat) => {
+              const catId = String(cat.id || cat[`${MSSV}_Id`] || cat[`${MSSV}_id`] || cat.BIT240060_Id || cat.BIT240060_id || '');
+              const catName = cat.name || cat[`${MSSV}_Name`] || cat[`${MSSV}_name`] || cat.BIT240060_Name || 'Loại món';
+              const isSelected = isSameCategoryId(categoryId, catId);
+              return (
+                <TouchableOpacity
+                  key={catId}
                   style={[
-                    styles.categoryChipText,
-                    categoryId === String(cat.id) && styles.categoryChipTextSelected,
+                    styles.categoryChip,
+                    isSelected && styles.categoryChipSelected,
                   ]}
+                  onPress={() => {
+                    setCategoryId(catId);
+                    if (errors.categoryId) setErrors({ ...errors, categoryId: null });
+                  }}
                 >
-                  {cat.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={[
+                      styles.categoryChipText,
+                      isSelected && styles.categoryChipTextSelected,
+                    ]}
+                  >
+                    {isSelected ? '✓ ' : ''}{catName}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
           {errors.categoryId && (
             <Text style={styles.errorText}>{t(errors.categoryId)}</Text>
@@ -321,11 +374,12 @@ export const DishFormScreen = ({ dishId, onNavigate }) => {
 
           {/* Danh sách ảnh đã thêm */}
           {images.map((img, idx) => {
-            const isThumb = Boolean(img[`${MSSV}_IsThumbnail`]);
+            const isThumb = Boolean(img[`${MSSV}_IsThumbnail`] || img.isThumbnail || img.BIT240060_IsThumbnail);
+            const imgUri = img[`${MSSV}_ImageUrl`] || img.imageUrl || img.BIT240060_ImageUrl || img.url || '';
             return (
               <View key={idx} style={styles.imageItemRow}>
                 <Image
-                  source={{ uri: img[`${MSSV}_ImageUrl`] }}
+                  source={{ uri: imgUri }}
                   style={styles.imagePreview}
                 />
                 <View style={styles.imageItemInfo}>
@@ -334,7 +388,7 @@ export const DishFormScreen = ({ dishId, onNavigate }) => {
                     numberOfLines={1}
                     ellipsizeMode="middle"
                   >
-                    {img[`${MSSV}_ImageUrl`]}
+                    {imgUri}
                   </Text>
                   <View style={styles.thumbRadioRow}>
                     <TouchableOpacity

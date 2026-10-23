@@ -12,7 +12,8 @@ import {
 import { useApp } from '../context/AppContext';
 import { DishCard } from '../components/DishCard';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { validatePriceRange } from '../utils/validation';
+import { validatePriceRange, isSameCategoryId } from '../utils/validation';
+import { MSSV } from '../constants/config';
 
 export const DishListScreen = ({ onNavigate }) => {
   const {
@@ -23,6 +24,7 @@ export const DishListScreen = ({ onNavigate }) => {
     updateFilters,
     resetFilters,
     deleteDish,
+    restoreDefaultDishes,
     t,
   } = useApp();
 
@@ -39,8 +41,11 @@ export const DishListScreen = ({ onNavigate }) => {
 
   const handleConfirmDelete = async () => {
     if (dishToDelete) {
-      await deleteDish(dishToDelete.id);
+      const id = dishToDelete.id || dishToDelete[`${MSSV}_Id`] || dishToDelete.BIT240060_Id;
       setDishToDelete(null);
+      if (id) {
+        await deleteDish(id);
+      }
     }
   };
 
@@ -99,25 +104,30 @@ export const DishListScreen = ({ onNavigate }) => {
                   </Text>
                 </TouchableOpacity>
 
-                {categories.map((cat) => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[
-                      styles.chip,
-                      filters.selectedCategory === String(cat.id) && styles.chipActive,
-                    ]}
-                    onPress={() => updateFilters({ selectedCategory: String(cat.id) })}
-                  >
-                    <Text
+                {categories.map((cat) => {
+                  const catId = String(cat.id || cat[`${MSSV}_Id`] || cat.BIT240060_Id || '');
+                  const isSelected = isSameCategoryId(filters.selectedCategory, catId);
+                  const catName = cat.name || cat[`${MSSV}_Name`] || cat.BIT240060_Name || 'Loại món';
+                  return (
+                    <TouchableOpacity
+                      key={catId}
                       style={[
-                        styles.chipText,
-                        filters.selectedCategory === String(cat.id) && styles.chipTextActive,
+                        styles.chip,
+                        isSelected && styles.chipActive,
                       ]}
+                      onPress={() => updateFilters({ selectedCategory: catId })}
                     >
-                      {cat.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text
+                        style={[
+                          styles.chipText,
+                          isSelected && styles.chipTextActive,
+                        ]}
+                      >
+                        {catName}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
           </ScrollView>
@@ -235,15 +245,19 @@ export const DishListScreen = ({ onNavigate }) => {
       {/* 4. DANH SÁCH MÓN ĂN (FLATLIST) */}
       <FlatList
         data={filteredDishes}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => (
-          <DishCard
-            dish={item}
-            onPress={() => onNavigate('DISH_DETAIL', { dishId: item.id })}
-            onEdit={() => onNavigate('DISH_EDIT', { dishId: item.id })}
-            onDelete={(dish) => setDishToDelete(dish)}
-          />
-        )}
+        extraData={dishes}
+        keyExtractor={(item) => String(item.id || item[`${MSSV}_Id`] || item[`${MSSV}_id`] || item.BIT240060_Id || item.BIT240060_id || item._id)}
+        renderItem={({ item }) => {
+          const itemId = item.id || item[`${MSSV}_Id`] || item[`${MSSV}_id`] || item.BIT240060_Id || item.BIT240060_id || item._id;
+          return (
+            <DishCard
+              dish={item}
+              onPress={() => onNavigate('DISH_DETAIL', { dishId: itemId })}
+              onEdit={() => onNavigate('DISH_EDIT', { dishId: itemId })}
+              onDelete={(dish) => setDishToDelete(dish)}
+            />
+          );
+        }}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
@@ -261,12 +275,20 @@ export const DishListScreen = ({ onNavigate }) => {
                 <Text style={styles.emptyActionText}>↺ {t('clearFilter')}</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity
-                style={styles.emptyActionBtn}
-                onPress={() => onNavigate('DISH_CREATE')}
-              >
-                <Text style={styles.emptyActionText}>+ {t('add')}</Text>
-              </TouchableOpacity>
+              <View style={styles.emptyActionsRow}>
+                <TouchableOpacity
+                  style={[styles.emptyActionBtn, styles.restoreDishesBtn]}
+                  onPress={restoreDefaultDishes}
+                >
+                  <Text style={styles.emptyActionText}>↺ Khôi phục 8 món thực đơn</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.emptyActionBtn}
+                  onPress={() => onNavigate('DISH_CREATE')}
+                >
+                  <Text style={styles.emptyActionText}>+ {t('add')}</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         }
@@ -493,6 +515,16 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13,
+  },
+  emptyActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 4,
+  },
+  restoreDishesBtn: {
+    backgroundColor: '#059669',
   },
   priceInputError: {
     borderColor: '#EF4444',

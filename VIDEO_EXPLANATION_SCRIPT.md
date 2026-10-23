@@ -2,6 +2,7 @@
 ### Mã số sinh viên: **BIT240060**
 ### Tên Project: **BIT240060_FoodManager**
 ### Endpoint MockAPI: `https://6ad73db595e98f36aef21ac0.mockapi.io/BIT240060_Dish`
+### Link Google Drive Video Demo: [https://drive.google.com/drive/folders/15J7kvIuClKN6LJzUzGhzjaTwfpIepHjN?usp=sharing](https://drive.google.com/drive/folders/15J7kvIuClKN6LJzUzGhzjaTwfpIepHjN?usp=sharing)
 
 ---
 

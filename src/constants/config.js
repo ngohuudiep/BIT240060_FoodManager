@@ -45,6 +45,8 @@ export const STORAGE_KEYS = {
   DISHES: `@${MSSV}_dishes_local`,
   CATEGORIES: `@${MSSV}_categories_local`,
   SYNC_QUEUE: `@${MSSV}_sync_queue`,
+  DELETED_DISHES: `@${MSSV}_deleted_dishes`,
+  DELETED_NAME_CATS: `@${MSSV}_deleted_name_cats`,
   LANGUAGE: `@${MSSV}_language_setting`,
   FILTER_STATE: `@${MSSV}_filter_state`,
   MOCKAPI_URL: `@${MSSV}_mockapi_url`,

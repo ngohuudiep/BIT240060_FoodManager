@@ -2,7 +2,7 @@
  * DỊCH VỤ GỌI REST API (MOCKAPI SERVICE)
  * Bắt buộc: Tên bảng (resource) và TẤT CẢ các trường dữ liệu đều có tiền tố BIT240060_
  */
-import { TABLE_NAMES, DEFAULT_MOCKAPI_BASE_URL } from '../constants/config';
+import { TABLE_NAMES, DEFAULT_MOCKAPI_BASE_URL, MSSV } from '../constants/config';
 import { storageService } from './storageService';
 
 // Thời gian chờ tối đa cho mỗi request (timeout 8000ms)
@@ -89,15 +89,55 @@ export const apiService = {
 
   /**
    * Tạo mới món ăn trên MockAPI
+   * Đồng bộ tương thích cả schema có tiền tố BIT240060_ lẫn schema chuẩn
    */
   async createDish(dishData) {
     const url = await this.getDishEndpointUrl();
 
-    // Loại bỏ Id nếu là id tạm của local để MockAPI tự sinh ID mới duy nhất
-    const payload = { ...dishData };
-    if (String(payload.BIT240060_Id).startsWith('temp_')) {
-      delete payload.BIT240060_Id;
-    }
+    // Loại bỏ Id tạm nếu có để MockAPI tự sinh ID mới duy nhất
+    const raw = { ...dishData };
+    delete raw.id;
+    delete raw._id;
+    delete raw[`${MSSV}_Id`];
+    delete raw[`${MSSV}_id`];
+    delete raw.BIT240060_Id;
+    delete raw.BIT240060_id;
+    delete raw.isQuick;
+    delete raw.thumbnailUrl;
+
+    const rawImages = raw[`${MSSV}_DishImage`] || raw.dishImage || raw.images || [];
+    const normalizedImages = Array.isArray(rawImages)
+      ? rawImages.map((img, idx) => {
+          const imgUrl = img[`${MSSV}_ImageUrl`] || img.imageUrl || img.url || '';
+          const isThumb = Boolean(img[`${MSSV}_IsThumbnail`] ?? img.isThumbnail ?? (idx === 0));
+          return {
+            [`${MSSV}_ImageUrl`]: imgUrl,
+            imageUrl: imgUrl,
+            [`${MSSV}_IsThumbnail`]: isThumb,
+            isThumbnail: isThumb,
+          };
+        })
+      : [];
+
+    const payload = {
+      ...raw,
+      [`${MSSV}_Name`]: raw[`${MSSV}_Name`] || raw.name,
+      name: raw[`${MSSV}_Name`] || raw.name,
+      [`${MSSV}_Price`]: raw[`${MSSV}_Price`] ?? raw.price,
+      price: raw[`${MSSV}_Price`] ?? raw.price,
+      [`${MSSV}_PreparationTime`]: raw[`${MSSV}_PreparationTime`] ?? raw.preparationTime,
+      preparationTime: raw[`${MSSV}_PreparationTime`] ?? raw.preparationTime,
+      [`${MSSV}_IsAvailable`]: raw[`${MSSV}_IsAvailable`] ?? raw.isAvailable,
+      isAvailable: raw[`${MSSV}_IsAvailable`] ?? raw.isAvailable,
+      [`${MSSV}_Description`]: raw[`${MSSV}_Description`] || raw.description || '',
+      description: raw[`${MSSV}_Description`] || raw.description || '',
+      [`${MSSV}_DishCategoryId`]: raw[`${MSSV}_DishCategoryId`] || raw.dishCategoryId || raw.categoryId,
+      dishCategoryId: raw[`${MSSV}_DishCategoryId`] || raw.dishCategoryId || raw.categoryId,
+      categoryId: raw[`${MSSV}_DishCategoryId`] || raw.dishCategoryId || raw.categoryId,
+      [`${MSSV}_DishImage`]: normalizedImages,
+      dishImage: normalizedImages,
+      images: normalizedImages,
+    };
 
     const res = await fetchWithTimeout(url, {
       method: 'POST',
@@ -115,10 +155,54 @@ export const apiService = {
    */
   async updateDish(dishId, dishData) {
     const baseEndpoint = await this.getDishEndpointUrl();
-    const url = `${baseEndpoint}/${dishId}`;
+    const cleanId = String(dishId).replace(/^dish_/, '');
+    const url = `${baseEndpoint}/${cleanId}`;
+
+    const raw = { ...dishData };
+    delete raw.isQuick;
+    delete raw.thumbnailUrl;
+
+    const rawImages = raw[`${MSSV}_DishImage`] || raw.dishImage || raw.images || [];
+    const normalizedImages = Array.isArray(rawImages)
+      ? rawImages.map((img, idx) => {
+          const imgUrl = img[`${MSSV}_ImageUrl`] || img.imageUrl || img.url || '';
+          const isThumb = Boolean(img[`${MSSV}_IsThumbnail`] ?? img.isThumbnail ?? (idx === 0));
+          return {
+            [`${MSSV}_ImageUrl`]: imgUrl,
+            imageUrl: imgUrl,
+            [`${MSSV}_IsThumbnail`]: isThumb,
+            isThumbnail: isThumb,
+          };
+        })
+      : [];
+
+    // Đảm bảo tương thích cả schema có tiền tố BIT240060_ lẫn schema chuẩn của MockAPI
+    const payload = {
+      ...raw,
+      id: cleanId,
+      [`${MSSV}_Id`]: cleanId,
+      [`BIT240060_Id`]: cleanId,
+      [`${MSSV}_Name`]: raw[`${MSSV}_Name`] || raw.name,
+      name: raw[`${MSSV}_Name`] || raw.name,
+      [`${MSSV}_Price`]: raw[`${MSSV}_Price`] ?? raw.price,
+      price: raw[`${MSSV}_Price`] ?? raw.price,
+      [`${MSSV}_PreparationTime`]: raw[`${MSSV}_PreparationTime`] ?? raw.preparationTime,
+      preparationTime: raw[`${MSSV}_PreparationTime`] ?? raw.preparationTime,
+      [`${MSSV}_IsAvailable`]: raw[`${MSSV}_IsAvailable`] ?? raw.isAvailable,
+      isAvailable: raw[`${MSSV}_IsAvailable`] ?? raw.isAvailable,
+      [`${MSSV}_Description`]: raw[`${MSSV}_Description`] || raw.description || '',
+      description: raw[`${MSSV}_Description`] || raw.description || '',
+      [`${MSSV}_DishCategoryId`]: raw[`${MSSV}_DishCategoryId`] || raw.dishCategoryId || raw.categoryId,
+      dishCategoryId: raw[`${MSSV}_DishCategoryId`] || raw.dishCategoryId || raw.categoryId,
+      categoryId: raw[`${MSSV}_DishCategoryId`] || raw.dishCategoryId || raw.categoryId,
+      [`${MSSV}_DishImage`]: normalizedImages,
+      dishImage: normalizedImages,
+      images: normalizedImages,
+    };
+
     const res = await fetchWithTimeout(url, {
       method: 'PUT',
-      body: JSON.stringify(dishData),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
@@ -132,13 +216,23 @@ export const apiService = {
    */
   async deleteDish(dishId) {
     const baseEndpoint = await this.getDishEndpointUrl();
-    const url = `${baseEndpoint}/${dishId}`;
+    const cleanId = String(dishId).replace(/^dish_/, '');
+    const url = `${baseEndpoint}/${cleanId}`;
     const res = await fetchWithTimeout(url, { method: 'DELETE' });
+
+    // Nếu MockAPI trả về 404, bản ghi vốn dĩ không còn trên máy chủ -> Coi như đã xóa thành công
+    if (res.status === 404) {
+      return { id: cleanId, deleted: true, notFound: true };
+    }
 
     if (!res.ok) {
       throw new Error(this.formatHttpError(res.status, `Xóa món ID ${dishId}`));
     }
-    return await res.json();
+    try {
+      return await res.json();
+    } catch (_) {
+      return { id: cleanId, deleted: true };
+    }
   },
 
   // ==========================================

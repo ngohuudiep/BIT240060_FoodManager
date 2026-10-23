@@ -16,6 +16,7 @@ import { DishDetailScreen } from './src/screens/DishDetailScreen';
 import { DishFormScreen } from './src/screens/DishFormScreen';
 import { CategoryScreen } from './src/screens/CategoryScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 
 // Thành phần chính điều hướng bên trong Provider
 const MainApp = () => {
@@ -168,9 +169,11 @@ const MainApp = () => {
 
 export default function App() {
   return (
-    <AppProvider>
-      <MainApp />
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <MainApp />
+      </AppProvider>
+    </ErrorBoundary>
   );
 }
 

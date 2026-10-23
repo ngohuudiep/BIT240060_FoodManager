@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useApp } from '../context/AppContext';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { isCategoryInUse } from '../utils/validation';
+import { isCategoryInUse, isSameCategoryId } from '../utils/validation';
 import { MSSV } from '../constants/config';
 
 export const CategoryScreen = ({ onNavigate }) => {
@@ -27,7 +27,7 @@ export const CategoryScreen = ({ onNavigate }) => {
   const getDishCountForCategory = (catId) => {
     return dishes.filter((d) => {
       const dCatId = d.categoryId || d.BIT240060_DishCategoryId;
-      return String(dCatId) === String(catId);
+      return isSameCategoryId(dCatId, catId);
     }).length;
   };
 
@@ -40,7 +40,7 @@ export const CategoryScreen = ({ onNavigate }) => {
 
     // Kiểm tra tên trùng lặp
     const isDuplicate = categories.some(
-      (c) => c.name.toLowerCase() === trimmed.toLowerCase()
+      (c) => String(c?.name || c?.BIT240060_Name || '').toLowerCase() === trimmed.toLowerCase()
     );
     if (isDuplicate) {
       setError('Tên loại món này đã tồn tại trong danh mục!');
